@@ -1,6 +1,0 @@
-@AlbionWebApp_HostAddress = http://localhost:5105
-
-GET {{AlbionWebApp_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
