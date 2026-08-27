@@ -1,5 +1,6 @@
 ﻿using AlbionWebApp.Services;
 using Microsoft.AspNetCore.Mvc;
+using AlbionWebApp.DTOs;
 
 namespace AlbionWebApp.Controllers
 {
@@ -14,10 +15,10 @@ namespace AlbionWebApp.Controllers
             _searchItensService = searchItensService;
         }
 
-        [HttpGet(Name = "asyncGetItemByName")]
-        public async Task<IActionResult> asyncGetItemByName()
+        [HttpPost(Name = "asyncGetItemByName")]
+        public async Task<IActionResult> asyncGetItemByName([FromBody] SearchItemsFiltersDTO filtersDTO)
         {
-            var json = await _searchItensService.asyncGetItems("T4_BAG");
+            var json = await _searchItensService.asyncGetItems(filtersDTO);
 
             return Content(json, "application/json");
         }
