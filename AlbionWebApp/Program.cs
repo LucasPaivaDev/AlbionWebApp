@@ -1,5 +1,7 @@
 using AlbionWebApp.Data;
+using AlbionWebApp.Options;
 using AlbionWebApp.Services;
+using AlbionWebApp.Models;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,6 +11,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+public DbSet<ItemLabel> ItemLabels { get; set; }
+
+// Configurações da AODP (seção "Aodp" do appsettings) via Options pattern.
+builder.Services.Configure<AodpOptions>(
+    builder.Configuration.GetSection(AodpOptions.SectionName));
 
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<SearchItemsService>();
