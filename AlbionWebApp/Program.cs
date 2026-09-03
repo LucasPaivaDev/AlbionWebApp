@@ -11,8 +11,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-public DbSet<ItemLabel> ItemLabels { get; set; }
-
 // Configurações da AODP (seção "Aodp" do appsettings) via Options pattern.
 builder.Services.Configure<AodpOptions>(
     builder.Configuration.GetSection(AodpOptions.SectionName));
