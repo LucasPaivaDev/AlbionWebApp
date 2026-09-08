@@ -10,6 +10,9 @@ public class AppDbContext : DbContext
     }
 
     public DbSet<ItemLabel> ItemLabels { get; set; }
+    public DbSet<ItemPrice> ItemPrices { get; set; }
+    public DbSet<City> Cities { get; set; }
+    public DbSet<Quality> Qualities { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
