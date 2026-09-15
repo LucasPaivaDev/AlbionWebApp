@@ -18,9 +18,9 @@ namespace AlbionWebApp.Controllers
         [HttpPost(Name = "asyncGetItemByName")]
         public async Task<IActionResult> asyncGetItemByName([FromBody] SearchItemsFiltersDTO filtersDTO)
         {
-            var json = await _searchItensService.AsyncGetItems(filtersDTO);
+            var items = await _searchItensService.AsyncGetItems(filtersDTO);
 
-            return Content(json, "application/json");
+            return Ok(items);
         }
     }
 }

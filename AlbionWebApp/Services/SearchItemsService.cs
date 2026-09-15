@@ -2,6 +2,8 @@ using AlbionWebApp.DTOs;
 using AlbionWebApp.Options;
 using Microsoft.Extensions.Options;
 using System;
+using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace AlbionWebApp.Services
@@ -22,14 +24,26 @@ namespace AlbionWebApp.Services
 
 
 
-        public async Task<string> AsyncGetItems(SearchItemsFiltersDTO filtersDTO)
+        public async Task<List<AodpItemPriceResponseDTO>> AsyncGetItems(SearchItemsFiltersDTO filtersDTO)
         {
             var response = await _httpClient.GetAsync(
                 $"{_aodpOptions.Host}/api/v2/stats/prices/{filtersDTO.ItemName}.json?locations={filtersDTO.ItemBuyCity?.ToString()}");
 
             response.EnsureSuccessStatusCode();
 
-            return await response.Content.ReadAsStringAsync();
+            return await AsyncFormatAODPResponse(response);
+        }
+
+        public async Task<List<AodpItemPriceResponseDTO>> AsyncFormatAODPResponse(HttpResponseMessage response)
+        {
+            var json = await response.Content.ReadAsStringAsync();
+
+            var items = JsonSerializer.Deserialize<List<AodpItemPriceResponseDTO>>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            return items ?? new List<AodpItemPriceResponseDTO>();
         }
     }
 }
