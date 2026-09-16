@@ -3,6 +3,7 @@ using AlbionWebApp.Options;
 using AlbionWebApp.Services;
 using AlbionWebApp.Models;
 using Microsoft.EntityFrameworkCore;
+using AlbionWebApp.Repository;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,8 +16,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.Configure<AodpOptions>(
     builder.Configuration.GetSection(AodpOptions.SectionName));
 
-builder.Services.AddHttpClient();
 builder.Services.AddScoped<SearchItemsService>();
+builder.Services.AddScoped<ItemLabelRepository>();
+
+
+builder.Services.AddHttpClient();
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();

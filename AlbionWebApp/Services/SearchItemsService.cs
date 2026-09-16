@@ -14,7 +14,6 @@ namespace AlbionWebApp.Services
         private readonly HttpClient _httpClient;
         private readonly AodpOptions _aodpOptions;
        
-
         public SearchItemsService(IHttpClientFactory httpClientFactory, IOptions<AodpOptions> aodpOptions)
         {
             _httpClientFactory = httpClientFactory;
@@ -31,13 +30,19 @@ namespace AlbionWebApp.Services
 
             response.EnsureSuccessStatusCode();
 
-            return await AsyncFormatAODPResponse(response);
+            var responseDtoList =  await AsyncFormatAODPResponse(response);
+
+
+
+
+            return responseDtoList;
         }
 
         public async Task<List<AodpItemPriceResponseDTO>> AsyncFormatAODPResponse(HttpResponseMessage response)
         {
             var json = await response.Content.ReadAsStringAsync();
 
+            //Equivalente ao ToArray() dentro do DTO em PHP 
             var items = JsonSerializer.Deserialize<List<AodpItemPriceResponseDTO>>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
