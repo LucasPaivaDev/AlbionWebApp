@@ -1,4 +1,6 @@
 ﻿using AlbionWebApp.Data;
+using AlbionWebApp.DTOs;
+using AlbionWebApp.Models;
 
 namespace AlbionWebApp.Repository
 {
@@ -11,9 +13,19 @@ namespace AlbionWebApp.Repository
             _appDbContext = appDbContext;
         }
 
-        public async Task<string> GetItemLabelByItemId(string itemId)
+        public async Task<ItemLabel> CreateItemLabelByAodpDto(AodpItemPriceResponseDTO aodpDto)
         {
-          
+            _appDbContext.ItemLabels.Add(new ItemLabel
+            {
+                BaseName = aodpDto.Name,
+                Name = aodpDto.Name,
+                URL_Image = aodpDto.ItemId,
+                Category = "teste",
+                Subcategory = "teste",
+                CreatedAt =  DateTime.UtcNow.ToShortDateString()
+            });
+            await _appDbContext.SaveChangesAsync();
+            return _appDbContext.ItemLabels.Last();
         }
 
 

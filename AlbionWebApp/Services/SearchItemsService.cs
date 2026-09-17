@@ -1,5 +1,6 @@
 using AlbionWebApp.DTOs;
 using AlbionWebApp.Options;
+using AlbionWebApp.Repository;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
@@ -13,12 +14,18 @@ namespace AlbionWebApp.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly HttpClient _httpClient;
         private readonly AodpOptions _aodpOptions;
+        private readonly ItemLabelRepository _itemLabelRepository;
        
-        public SearchItemsService(IHttpClientFactory httpClientFactory, IOptions<AodpOptions> aodpOptions)
+        public SearchItemsService(
+            IHttpClientFactory httpClientFactory,
+            IOptions<AodpOptions> aodpOptions,
+            ItemLabelRepository itemLabelRepository
+        )
         {
             _httpClientFactory = httpClientFactory;
             _aodpOptions = aodpOptions.Value;
             _httpClient = _httpClientFactory.CreateClient();
+            _itemLabelRepository = itemLabelRepository;
         }
 
 
@@ -31,7 +38,10 @@ namespace AlbionWebApp.Services
             response.EnsureSuccessStatusCode();
 
             var responseDtoList =  await AsyncFormatAODPResponse(response);
-
+            foreach (AodpItemPriceResponseDTO dto in responseDtoList)
+            {
+                await _itemLabelRepository.CreateItemLabelByAodpDto(dto);
+            }
 
 
 

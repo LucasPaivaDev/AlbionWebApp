@@ -1,3 +1,4 @@
+using AlbionWebApp.Enums;
 using System.Text.Json.Serialization;
 
 namespace AlbionWebApp.DTOs
@@ -8,13 +9,26 @@ namespace AlbionWebApp.DTOs
         [JsonPropertyName("item_id")]
         public string ItemId { get; set; } = string.Empty;
 
+       
+        /// "T4_BAG" -> "BAG"). Não vem do JSON da AODP — é calculada a partir de ItemId
+        [JsonIgnore]
+        public string Name
+        {
+            get
+            {
+                var separatorIndex = ItemId.IndexOf('_');
+                return separatorIndex >= 0 ? ItemId[(separatorIndex + 1)..] : ItemId;
+            }
+        }
+
         /// Cidade a que o preço se refere (ex: "Lymhurst", "Caerleon").
         [JsonPropertyName("city")]
-        public string City { get; set; } = string.Empty;
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public AlbionCityEnum City { get; set; }
 
-        /// Qualidade do item (1 = Normal .. 5 = Masterpiece).
+        /// Qualidade do item 1 a 5.
         [JsonPropertyName("quality")]
-        public int Quality { get; set; }
+        public ItemQualityEnum Quality { get; set; }
 
         /// Menor preço entre as sell orders ativas. 0 = sem dado reportado.
         [JsonPropertyName("sell_price_min")]
