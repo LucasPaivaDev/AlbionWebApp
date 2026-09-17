@@ -1,4 +1,5 @@
 using AlbionWebApp.DTOs;
+using AlbionWebApp.Models;
 using AlbionWebApp.Options;
 using AlbionWebApp.Repository;
 using Microsoft.Extensions.Options;
@@ -37,10 +38,14 @@ namespace AlbionWebApp.Services
 
             response.EnsureSuccessStatusCode();
 
+            var createdItems = new List<ItemPrice>();
             var responseDtoList =  await AsyncFormatAODPResponse(response);
             foreach (AodpItemPriceResponseDTO dto in responseDtoList)
             {
-                await _itemLabelRepository.CreateItemLabelByAodpDto(dto);
+                ItemLabel itemLabel = await _itemLabelRepository.CreateItemLabelByAodpDto(dto);
+                ItemPrice itemPrice = await _itemLabelRepository.CreateItemPriceByAodpDto(dto, itemLabel.Id);
+
+                createdItems.Add(itemPrice);
             }
 
 
