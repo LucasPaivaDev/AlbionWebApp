@@ -6,7 +6,6 @@ namespace AlbionWebApp.Models
 
         // Vínculo com o conceito "seco" do item (nome + foto), sem tier/encantamento
         public int ItemLabelId { get; set; }
-        public ItemLabel ItemLabel { get; set; }
 
         // item_id cru como a AODP devolve (ex: T4_BAG@1). Mantido para bater 1:1
         // com a resposta da API, facilitar upsert e debug.
@@ -18,10 +17,7 @@ namespace AlbionWebApp.Models
 
         // Dimensão que a AODP já entrega separada
         public int QualityId { get; set; }    // 1..5
-        public Quality Quality { get; set; }
-
         public int CityId { get; set; }
-        public City City { get; set; }
 
         // Preços (null = sem dado reportado)
         public int? SellPriceMin { get; set; }

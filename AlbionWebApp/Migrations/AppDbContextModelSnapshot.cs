@@ -37,6 +37,43 @@ namespace AlbionWebApp.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Cities");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Caerleon"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Bridgewatch"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "Lymhurst"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "Martlock"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "Thetford"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Name = "FortSterling"
+                        },
+                        new
+                        {
+                            Id = 7,
+                            Name = "Brecilien"
+                        });
                 });
 
             modelBuilder.Entity("AlbionWebApp.Models.ItemLabel", b =>
@@ -126,12 +163,6 @@ namespace AlbionWebApp.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CityId");
-
-                    b.HasIndex("ItemLabelId");
-
-                    b.HasIndex("QualityId");
-
                     b.ToTable("ItemPrices");
                 });
 
@@ -150,33 +181,33 @@ namespace AlbionWebApp.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Qualities");
-                });
 
-            modelBuilder.Entity("AlbionWebApp.Models.ItemPrice", b =>
-                {
-                    b.HasOne("AlbionWebApp.Models.City", "City")
-                        .WithMany()
-                        .HasForeignKey("CityId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("AlbionWebApp.Models.ItemLabel", "ItemLabel")
-                        .WithMany()
-                        .HasForeignKey("ItemLabelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("AlbionWebApp.Models.Quality", "Quality")
-                        .WithMany()
-                        .HasForeignKey("QualityId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("City");
-
-                    b.Navigation("ItemLabel");
-
-                    b.Navigation("Quality");
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Normal"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Good"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "Outstanding"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "Excellent"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "Masterpiece"
+                        });
                 });
 #pragma warning restore 612, 618
         }
