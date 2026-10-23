@@ -9,7 +9,7 @@ paths:
 
 # Integração com a AODP
 
-Referência completa: `.kiro/steering/albion-domain-context.md` (seção 1).
+Referência completa: `.claude/rules/albion-domain-context.md` (seção 1).
 
 - Host regional vem de `AodpOptions.Host` (`appsettings.json` → `Aodp:Host`, padrão `https://west.albion-online-data.com`). Nunca fixe o host no código.
 - Preços atuais: `GET /api/v2/stats/prices/{ids}.json?locations=A,B&qualities=N`. Vários `item_id` e várias cidades cabem em **uma única chamada**, então agrupe sempre que puder.

@@ -59,12 +59,13 @@ Swagger: `/swagger` (Development). A connection string fica em `appsettings.Deve
 - `Program.cs` chama `UseSwaggerUI` duas vezes.
 - Há credenciais de dev em texto puro (`docker-compose.yml`, `appsettings.Development.json`). Não reutilize essas credenciais fora do ambiente local.
 
-## Documentação de especificação (Kiro)
+## Documentação de especificação
 
-A fonte de verdade de requisitos e design está em `.kiro/` e **não deve ser duplicada aqui**. Leia os arquivos antes de trabalhar em funcionalidades relacionadas:
+A fonte de verdade de requisitos e design está em `.claude/specs/` e **não deve ser duplicada aqui**. Leia os arquivos antes de trabalhar em funcionalidades relacionadas:
 
-- `.kiro/steering/albion-domain-context.md`: endpoints da AODP, rate limits, conversão de ticks, fórmulas de RRR, Production Bonus e especialização de cidades.
-- `.kiro/specs/refining-module/requirements.md`: 8 requisitos em formato EARS (RRR, Focus, preços, custo/lucro, cidades, API, histórico, validação).
-- `.kiro/specs/refining-module/design.md`: componentes, interfaces, DTOs, entidade, 20 Correctness Properties (PBT) e estratégia de testes.
+- `.claude/rules/albion-domain-context.md`: endpoints da AODP, rate limits, conversão de ticks, fórmulas de RRR, Production Bonus e especialização de cidades.
+- `.claude/specs/refining-module/requirements.md`: 8 requisitos em formato EARS (RRR, Focus, preços, custo/lucro, cidades, API, histórico, validação).
+- `.claude/specs/refining-module/design.md`: componentes, interfaces, DTOs, entidade, 20 Correctness Properties (PBT) e estratégia de testes.
+- `.claude/specs/refining-module/tasks.md`: plano de execução do módulo, com a receita real de refino e o custo de Focus confirmados no `ao-bin-dumps`, os modos de aquisição e a ordem de implementação. Tem precedência sobre os trechos do `design.md` que ele marca como revisados.
 
 Resumo do que vale para qualquer código novo que envolva mercado ou refino está em `.claude/rules/` (carregado conforme os arquivos tocados).

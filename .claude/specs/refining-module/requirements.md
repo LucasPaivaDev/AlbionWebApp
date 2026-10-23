@@ -4,7 +4,9 @@
 
 O módulo de Refino (Refining Module) ajuda o jogador de Albion Online a decidir a melhor forma de refinar recursos, calculando a Resource Return Rate (RRR) efetiva com base na maestria do jogador, nos Focus Points disponíveis e no bônus de produção da cidade de refino, e cruzando esse cálculo com preços reais de mercado obtidos via Albion Online Data Project (AODP) para estimar o custo e o lucro da operação de refino em comparação com a venda do recurso bruto. O módulo expõe os resultados via endpoint de API REST e persiste um histórico de simulações no PostgreSQL através do Entity Framework Core, seguindo os padrões arquiteturais já estabelecidos no projeto AlbionWebApp (ex.: `SearchItemsController`, `SearchItemsService`).
 
-Este módulo cobre o subconjunto de recursos primários de refino (Fiber/Cloth, Hide/Leather, Ore/Metal Bar, Stone/Stone Block, Wood/Planks) nos tiers T2 a T8. Maestria e Focus Points são fornecidos manualmente pelo jogador a cada simulação, já que a AODP não expõe dados de personagem. A regeneração de Focus Points ao longo do tempo está fora do escopo deste módulo.
+Este módulo cobre o subconjunto de recursos primários de refino (Fiber/Cloth, Hide/Leather, Ore/Metal Bar, Stone/Stone Block, Wood/Planks) nos tiers T2 a T8.
+
+> **Revisão de 2026-10-23.** A receita real de refino entrou no escopo do MVP: a quantidade de recurso bruto por craft varia por tier e, de T3 em diante, o refino consome também uma unidade de recurso refinado do tier anterior (dados confirmados no `ao-bin-dumps/items.xml` — ver `tasks.md`). Além disso, o modo de aquisição de cada material (coletado pelo jogador ou comprado no mercado) passou a ser parâmetro de entrada, porque ele muda tanto o custo quanto a comparação do Requisito 4. Os requisitos abaixo refletem essa revisão; o plano de execução está em `tasks.md`. Maestria e Focus Points são fornecidos manualmente pelo jogador a cada simulação, já que a AODP não expõe dados de personagem. A regeneração de Focus Points ao longo do tempo está fora do escopo deste módulo.
 
 ## Glossary
 
@@ -30,6 +32,11 @@ Este módulo cobre o subconjunto de recursos primários de refino (Fiber/Cloth, 
 - **Identificador de jogador**: Valor informado pelo jogador como dado simples de entrada da requisição para associar uma simulação e seu histórico a um jogador específico. Não representa um sistema de contas, login ou autenticação — é apenas um dado de entrada da simulação.
 - **Menor preço de sell order ativo**: O menor valor entre as ordens de venda (sell orders) atualmente ativas para um item em uma cidade, conforme retornado pela AODP, utilizado como preço de venda de referência nos cálculos do Refining_Calculator.
 - **Mapeamento fixo predefinido de cidade para recurso especializado**: Tabela fixa, definida no Refining_Module, que associa cada cidade Royal ao(s) Refined_Resource(s) em que ela é especializada, utilizada para determinar o Production_Bonus base (ver Requisito 1).
+- **Refining_Recipe**: Tabela fixa por Resource_Tier, definida no Refining_Module a partir do `ao-bin-dumps`, com a quantidade de recurso bruto consumida por craft, a quantidade de Previous_Refined_Resource consumida por craft e o custo base de Focus por craft.
+- **Previous_Refined_Resource**: O produto refinado do tier imediatamente anterior ao Resource_Tier informado, consumido pelo refino a partir de T3 (uma unidade por craft). Não existe em T2.
+- **Previous_Refined_City**: A cidade informada pelo jogador onde o Previous_Refined_Resource é comprado, quando o modo de aquisição desse material é "comprado".
+- **Acquisition_Mode**: Indicação, por material (recurso bruto e Previous_Refined_Resource, independentemente), de que o material já pertence ao jogador ("coletado") ou será comprado no mercado ("comprado"). Determina se o material entra no custo da operação e qual baseline de comparação é usado no Requisito 4.
+- **Craft_Count**: Número de operações de refino possíveis com a quantidade bruta informada, igual à divisão inteira da quantidade bruta pela quantidade de bruto por craft da Refining_Recipe. É também a quantidade de Refined_Resource produzida.
 
 ## Requirements
 
@@ -39,13 +46,15 @@ Este módulo cobre o subconjunto de recursos primários de refino (Fiber/Cloth, 
 
 #### Acceptance Criteria
 
-1. THE Refining_Calculator SHALL aceitar como entrada o Refined_Resource, o Resource_Tier, o Mastery_Level (número inteiro de 0 a 100), os Focus_Points disponíveis (número inteiro maior ou igual a 0), o Focus_Cost da operação (número inteiro maior ou igual a 0), um indicador de uso de Focus, a Refining_City, e a quantidade bruta de Refined_Resource a ser refinada (número inteiro de 1 a 999999).
+1. THE Refining_Calculator SHALL aceitar como entrada o Refined_Resource, o Resource_Tier, o Mastery_Level (número inteiro de 0 a 100), os Focus_Points disponíveis (número inteiro maior ou igual a 0), um indicador de uso de Focus, a Refining_City, a quantidade bruta de Refined_Resource a ser refinada (número inteiro de 1 a 999999), e o Acquisition_Mode do recurso bruto e do Previous_Refined_Resource.
+1.1. THE Refining_Calculator SHALL calcular o Focus_Cost da operação a partir da Refining_Recipe e do Mastery_Level (Requisito 2), não recebendo esse valor como entrada.
+1.2. THE Refining_Calculator SHALL derivar o Craft_Count da quantidade bruta informada e da Refining_Recipe, e SHALL tratar Craft_Count igual a zero (quantidade bruta menor que a quantidade por craft) como simulação válida sem produção, não como erro de validação.
 2. WHEN a Refining_City corresponde a uma cidade Royal que, conforme mapeamento fixo predefinido de cidade para recurso especializado, é especializada no Refined_Resource informado, THE Refining_Calculator SHALL aplicar um Production_Bonus base de 58 pontos percentuais (18% baseline mais 40% de especialização).
 3. WHEN a Refining_City corresponde a uma cidade Royal que, conforme o mesmo mapeamento fixo predefinido, não é especializada no Refined_Resource informado, THE Refining_Calculator SHALL aplicar um Production_Bonus base de 18 pontos percentuais.
-4. WHEN o indicador de uso de Focus é verdadeiro E os Focus_Points disponíveis são maiores ou iguais ao Focus_Cost informado, THE Refining_Calculator SHALL somar 59 pontos percentuais ao Production_Bonus e subtrair o Focus_Cost dos Focus_Points disponíveis.
-5. IF o indicador de uso de Focus é verdadeiro E os Focus_Points disponíveis são menores que o Focus_Cost informado, THEN THE Refining_Calculator SHALL calcular a RRR sem somar os 59 pontos percentuais de bônus de Focus e SHALL indicar ao jogador que os Focus_Points disponíveis foram insuficientes para aplicar o bônus.
+4. WHEN o indicador de uso de Focus é verdadeiro E os Focus_Points disponíveis são maiores ou iguais ao Focus_Cost calculado, THE Refining_Calculator SHALL somar 59 pontos percentuais ao Production_Bonus e subtrair o Focus_Cost dos Focus_Points disponíveis.
+5. IF o indicador de uso de Focus é verdadeiro E os Focus_Points disponíveis são menores que o Focus_Cost calculado, THEN THE Refining_Calculator SHALL calcular a RRR sem somar os 59 pontos percentuais de bônus de Focus e SHALL indicar ao jogador que os Focus_Points disponíveis foram insuficientes para aplicar o bônus.
 6. THE Refining_Calculator SHALL calcular a RRR aplicando a fórmula RRR = 1 - 1/(1 + (Production_Bonus/100)) sobre o Production_Bonus total resultante.
-7. THE Refining_Calculator SHALL calcular a quantidade de matéria-prima devolvida multiplicando a quantidade bruta de Refined_Resource informada pela RRR calculada.
+7. THE Refining_Calculator SHALL calcular a quantidade devolvida de cada material consumido — recurso bruto e Previous_Refined_Resource — multiplicando a quantidade efetivamente consumida daquele material (Craft_Count vezes a quantidade por craft da Refining_Recipe) pela RRR calculada.
 8. IF o Resource_Tier informado está fora do intervalo T2 a T8, THEN THE Refining_Calculator SHALL rejeitar a simulação com uma mensagem de erro indicando o intervalo de tiers suportado.
 9. IF o Refined_Resource informado não pertence ao conjunto suportado (Fiber, Hide, Ore, Stone, Wood), THEN THE Refining_Calculator SHALL rejeitar a simulação com uma mensagem de erro indicando os recursos suportados.
 10. IF a quantidade bruta de Refined_Resource informada é menor ou igual a 0, ou o Mastery_Level informado está fora do intervalo de 0 a 100, THEN THE Refining_Calculator SHALL rejeitar a simulação com uma mensagem de erro indicando o campo inválido e o intervalo aceito.
@@ -69,11 +78,12 @@ Este módulo cobre o subconjunto de recursos primários de refino (Fiber/Cloth, 
 
 #### Acceptance Criteria
 
-1. WHEN uma simulação de refino é solicitada, THE Market_Price_Provider SHALL consultar o endpoint de preços atuais da AODP para obter o menor preço de sell order ativo do recurso bruto na Origin_City e o menor preço de sell order ativo do Refined_Resource na Destination_City.
-2. THE Market_Price_Provider SHALL combinar a consulta do recurso bruto e do recurso refinado em uma única chamada à AODP quando ambos os itens forem solicitados para a mesma simulação.
+1. WHEN uma simulação de refino é solicitada, THE Market_Price_Provider SHALL consultar o endpoint de preços atuais da AODP para obter o menor preço de sell order ativo do recurso bruto na Origin_City, o menor preço de sell order ativo do Refined_Resource na Destination_City e, quando o Resource_Tier é maior que 2, o menor preço de sell order ativo do Previous_Refined_Resource na Previous_Refined_City.
+2. THE Market_Price_Provider SHALL combinar a consulta de todos os itens necessários à simulação em uma única chamada à AODP, com todos os item_id e todas as cidades envolvidas na mesma requisição.
 3. IF a chamada à AODP não retornar resposta dentro de 10 segundos, OR retornar um código de status HTTP não bem-sucedido, THEN THE Market_Price_Provider SHALL propagar um erro identificável de comunicação para o Refining_Calculator sem interromper o processo de forma silenciosa.
-4. IF o preço retornado pela AODP para o recurso bruto ou para o Refined_Resource estiver ausente, for igual a zero, OR tiver um timestamp de atualização mais antigo que 24 horas, THEN THE Refining_Calculator SHALL tratar o preço correspondente como indisponível.
-5. IF o preço do recurso bruto OR o preço do Refined_Resource for tratado como indisponível pelo Critério 4, mesmo que apenas um dos dois esteja ausente, THEN THE Refining_Calculator SHALL retornar a simulação indicando que o custo ou lucro não pôde ser calculado por ausência de dados de mercado.
+4. IF o preço retornado pela AODP para qualquer um dos itens consultados estiver ausente, for igual a zero, OR tiver um timestamp de atualização mais antigo que 24 horas, THEN THE Refining_Calculator SHALL tratar o preço correspondente como indisponível.
+5. IF qualquer preço necessário ao cálculo for tratado como indisponível pelo Critério 4, mesmo que apenas um deles esteja ausente, THEN THE Refining_Calculator SHALL retornar a simulação indicando que o custo ou lucro não pôde ser calculado por ausência de dados de mercado.
+6. WHERE o Acquisition_Mode de um material é "coletado", THE Refining_Calculator SHALL continuar exigindo o preço desse material para avaliar o valor do material devolvido e da sobra (Requisito 4), tratando-o pelas mesmas regras de disponibilidade dos Critérios 4 e 5.
 
 ### Requisito 4: Cálculo de custo e lucro do refino
 
@@ -81,14 +91,16 @@ Este módulo cobre o subconjunto de recursos primários de refino (Fiber/Cloth, 
 
 #### Acceptance Criteria
 
-1. THE Refining_Calculator SHALL calcular o custo de aquisição do recurso bruto multiplicando a quantidade líquida necessária (quantidade informada menos a quantidade devolvida pela RRR) pelo preço de venda do recurso bruto na Origin_City.
+1. WHERE o Acquisition_Mode do recurso bruto é "comprado", THE Refining_Calculator SHALL calcular o custo de aquisição do recurso bruto multiplicando a quantidade líquida necessária (quantidade consumida menos a quantidade devolvida pela RRR) pelo preço de venda do recurso bruto na Origin_City; WHERE o Acquisition_Mode do recurso bruto é "coletado", esse custo é zero.
+1.1. WHERE o Resource_Tier é maior que 2 E o Acquisition_Mode do Previous_Refined_Resource é "comprado", THE Refining_Calculator SHALL calcular o custo de aquisição do Previous_Refined_Resource multiplicando a quantidade líquida necessária (quantidade consumida menos a quantidade devolvida pela RRR) pelo preço de venda do Previous_Refined_Resource na Previous_Refined_City; WHERE o Acquisition_Mode é "coletado", esse custo é zero.
 2. WHERE um Station_Fee é informado como valor fixo, THE Refining_Calculator SHALL somar o Station_Fee integralmente ao custo total de refino.
-3. WHERE um Station_Fee é informado como percentual, THE Refining_Calculator SHALL somar ao custo total de refino o valor resultante da aplicação do percentual sobre o custo de aquisição do recurso bruto calculado no Critério 1.
-4. THE Refining_Calculator SHALL calcular a receita bruta de venda do Refined_Resource multiplicando a quantidade de Refined_Resource produzida pelo preço de venda do Refined_Resource na Destination_City.
+3. WHERE um Station_Fee é informado como percentual, THE Refining_Calculator SHALL somar ao custo total de refino o valor resultante da aplicação do percentual sobre a soma dos custos de aquisição calculados nos Critérios 1 e 1.1.
+4. THE Refining_Calculator SHALL calcular a receita bruta de venda do Refined_Resource multiplicando a quantidade de Refined_Resource produzida (Craft_Count) pelo preço de venda do Refined_Resource na Destination_City.
 5. WHERE um Market_Tax é informado, THE Refining_Calculator SHALL deduzir o Market_Tax da receita bruta de venda do Refined_Resource para obter a receita líquida de refino.
-6. THE Refining_Calculator SHALL calcular o lucro estimado de refinar subtraindo o custo total de refino (Critérios 1 a 3) da receita líquida de refino (Critério 5).
-7. THE Refining_Calculator SHALL calcular a receita bruta de venda do recurso bruto sem refinar multiplicando a quantidade de recurso bruto informada pelo preço de venda do recurso bruto na Origin_City.
-8. WHERE um Market_Tax é informado, THE Refining_Calculator SHALL deduzir o Market_Tax da receita bruta de venda do recurso bruto para obter o lucro estimado de vender o recurso bruto sem refinar.
+5.1. WHERE o Acquisition_Mode de um material é "coletado", THE Refining_Calculator SHALL somar à receita líquida de refino o valor de mercado, líquido de Market_Tax, da quantidade daquele material devolvida pela RRR e, no caso do recurso bruto, também da sobra que não completou um craft.
+6. THE Refining_Calculator SHALL calcular o lucro estimado de refinar subtraindo o custo total de refino (Critérios 1 a 3) da receita líquida de refino (Critérios 5 e 5.1).
+7. WHERE o Acquisition_Mode do recurso bruto é "coletado", THE Refining_Calculator SHALL calcular a receita bruta de venda do recurso bruto sem refinar multiplicando a quantidade de recurso bruto informada pelo preço de venda do recurso bruto na Origin_City; WHERE o Acquisition_Mode do recurso bruto é "comprado", THE Refining_Calculator SHALL considerar o lucro estimado de vender o recurso bruto sem refinar como zero, já que comprar e revender o mesmo recurso na mesma cidade não gera lucro.
+8. WHERE um Market_Tax é informado E o Acquisition_Mode do recurso bruto é "coletado", THE Refining_Calculator SHALL deduzir o Market_Tax da receita bruta de venda do recurso bruto para obter o lucro estimado de vender o recurso bruto sem refinar.
 9. THE Refining_Calculator SHALL indicar na simulação qual das duas opções (refinar ou vender bruto) resulta em maior lucro estimado, ou indicar que os lucros estimados são iguais quando a diferença entre eles for zero.
 
 ### Requisito 5: Configuração de cidades independentes por etapa
@@ -97,7 +109,7 @@ Este módulo cobre o subconjunto de recursos primários de refino (Fiber/Cloth, 
 
 #### Acceptance Criteria
 
-1. THE Refining_Calculator SHALL aceitar Origin_City, Refining_City e Destination_City como três parâmetros de entrada distintos, cada um podendo ser igual ou diferente dos demais, sem restrição de correspondência entre eles.
+1. THE Refining_Calculator SHALL aceitar Origin_City, Previous_Refined_City, Refining_City e Destination_City como quatro parâmetros de entrada distintos, cada um podendo ser igual ou diferente dos demais, sem restrição de correspondência entre eles. Os critérios seguintes, que falam em "as três cidades", aplicam-se igualmente à Previous_Refined_City.
 2. IF Origin_City, Refining_City e Destination_City não são informadas explicitamente, THEN THE Refining_Calculator SHALL assumir a mesma cidade informada pelo jogador para as três etapas.
 3. WHEN apenas uma ou duas das três cidades (Origin_City, Refining_City, Destination_City) são informadas explicitamente, THE Refining_Calculator SHALL aplicar a cidade informada às etapas correspondentes e utilizar essa mesma cidade informada como valor padrão para cada etapa cuja cidade não foi informada.
 4. IF a Origin_City, a Refining_City ou a Destination_City informada não corresponde a uma cidade Royal válida do Albion Online, THEN THE Refining_Calculator SHALL rejeitar a simulação com uma mensagem de erro indicando o campo de cidade inválido e as cidades suportadas.
@@ -111,7 +123,7 @@ Este módulo cobre o subconjunto de recursos primários de refino (Fiber/Cloth, 
 
 1. THE Refining_Module SHALL expor um endpoint HTTP que aceite requisições HTTP POST com um corpo em formato JSON contendo os parâmetros de entrada definidos no Requisito 1, Requisito 2 e Requisito 5, e retorne o resultado da simulação em formato JSON.
 2. IF os parâmetros de entrada da requisição não passarem nas validações de dados definidas para a simulação, THEN THE Refining_Module SHALL retornar um código de status HTTP 400 com uma lista de erros identificando o nome do campo inválido e o motivo específico da rejeição para cada campo.
-3. WHEN a simulação é concluída com sucesso, THE Refining_Module SHALL retornar um código de status HTTP 200 contendo o Production_Bonus, a RRR, o Focus_Cost, o indicador de uso efetivo de Focus, o custo total, a receita líquida, o lucro estimado de refinar, o lucro estimado de vender bruto e a indicação de qual opção é mais lucrativa.
+3. WHEN a simulação é concluída com sucesso, THE Refining_Module SHALL retornar um código de status HTTP 200 contendo o Production_Bonus, a RRR, o Focus_Cost, o indicador de uso efetivo de Focus, o Craft_Count, as quantidades consumidas e devolvidas de cada material, o custo total, a receita líquida, o lucro estimado de refinar, o lucro estimado de vender bruto e a indicação de qual opção é mais lucrativa.
 4. IF a simulação não puder ser concluída por falha de comunicação com a AODP (Requisito 3, Critério 3) OR por ausência de dados de mercado (Requisito 3, Critério 5), THEN THE Refining_Module SHALL retornar um código de status HTTP 200 contendo os campos calculáveis sem dados de mercado (Production_Bonus, RRR, Focus_Cost) e um indicador explícito de que o custo, a receita e o lucro não puderam ser calculados, junto com o motivo.
 
 ### Requisito 7: Persistência do histórico de simulações

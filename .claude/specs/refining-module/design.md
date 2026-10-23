@@ -1,10 +1,27 @@
 # Documento de Design — Módulo de Refino (Refining Module)
 
+> **Revisão de 2026-10-23 — leia junto com `tasks.md`.** Cinco pontos deste documento foram substituídos
+> por decisões posteriores, tomadas com dados confirmados no `ao-bin-dumps/items.xml`:
+>
+> 1. **Receita real por tier entrou no MVP.** O refino consome `RawPerCraft(tier)` unidades de bruto e,
+>    de T3 em diante, 1 unidade do refinado do tier anterior. A seção "Limitações conhecidas" que trata
+>    isso como gap está superada.
+> 2. **Focus base é oficial.** `craftingfocus` do jogo por tier: T2=18, T3=31, T4=54, T5=94, T6=164,
+>    T7=287, T8=503. Substitui a tabela não oficial do Edison-Cabrera citada na pesquisa abaixo.
+> 3. **Multiplicador de maestria é exponencial**, não linear: `Math.Pow(0.5, MasteryLevel × 0.04)`,
+>    derivado do albion-domain-context 2.6. Substitui `1 − MasteryLevel/100 × 0.9375`.
+> 4. **Modo de aquisição por material** (`Gathered`/`Purchased`) é parâmetro de entrada e muda o custo e
+>    o baseline de comparação do Requisito 4.9. Resolve a inconsistência entre Req 4.1 e Req 4.7.
+> 5. **`RefiningSimulationRepository` fica em `Repository/`**, não em `Data/`.
+>
+> As assinaturas, DTOs e o record abaixo refletem o desenho original e precisam dos campos novos listados
+> no `tasks.md`.
+
 ## Overview
 
 O Módulo de Refino adiciona ao AlbionWebApp a capacidade de simular operações de refino do Albion Online, calculando a Resource Return Rate (RRR) efetiva, o custo em Focus Points, e o custo/lucro estimado com base em preços reais de mercado obtidos via Albion Online Data Project (AODP). O módulo segue rigorosamente o padrão arquitetural já estabelecido pelo `SearchItemsController`/`SearchItemsService`: um Controller fino que orquestra Services injetados via DI, com DTOs anotados por Data Annotations para validação de entrada.
 
-A decisão arquitetural central — já indicada no `requirements.md` e no steering `albion-domain-context.md` — é a **separação estrita entre cálculo determinístico e integração de rede**:
+A decisão arquitetural central — já indicada no `requirements.md` e no contexto de domínio `.claude/rules/albion-domain-context.md` — é a **separação estrita entre cálculo determinístico e integração de rede**:
 
 - **`RefiningCalculatorService`**: função pura (sem I/O), implementa as fórmulas de RRR, Focus Cost, Production Bonus e cálculo de custo/lucro. Testável exaustivamente com Property-Based Testing (PBT), sem mocks, sem rede, sem banco.
 - **`MarketPriceProviderService`**: componente de integração, estende o padrão do `SearchItemsService`, consulta a AODP via `IHttpClientFactory` e aplica a lógica pura de "julgamento de disponibilidade de preço" (ausente/zero/desatualizado).
@@ -120,8 +137,12 @@ public record ProductionBonusResult(
     bool FocusBonusApplied,             // true se +59pp foi somado
     bool FocusInsufficientWarning);     // true se useFocus=true mas focus insuficiente
 
+// Revisado em 2026-10-23: materiais e modos de aquisição (ver tasks.md).
 public record CostAndProfitInput(
-    int RawQuantity, decimal ReturnedQuantity, decimal RawItemPrice, decimal RefinedItemPrice,
+    int RawQuantity, int CraftCount, int RawUsed, int LeftoverRaw, decimal ReturnedRawQuantity,
+    int PreviousRefinedUsed, decimal ReturnedPreviousRefinedQuantity,
+    decimal RawItemPrice, decimal? PreviousRefinedItemPrice, decimal RefinedItemPrice,
+    AcquisitionModeEnum RawAcquisitionMode, AcquisitionModeEnum PreviousRefinedAcquisitionMode,
     decimal? StationFeeFixed, decimal? StationFeePercentage, decimal? MarketTaxPercentage);
 
 public record CostAndProfitResult(
@@ -131,7 +152,7 @@ public record CostAndProfitResult(
 public record ValidationError(string Field, string Message);
 ```
 
-**Mapeamento fixo de especialização de cidade → recurso** (Requisito 1, Critérios 2 e 3; fonte: steering, seção 2.4): implementado como uma tabela estática somente-leitura (`Dictionary<AlbionCityEnum, RefinedResourceEnum?>`) dentro do `RefiningCalculatorService` ou em uma classe estática `CityResourceSpecializationMap`:
+**Mapeamento fixo de especialização de cidade → recurso** (Requisito 1, Critérios 2 e 3; fonte: albion-domain-context, seção 2.4): implementado como uma tabela estática somente-leitura (`Dictionary<AlbionCityEnum, RefinedResourceEnum?>`) dentro do `RefiningCalculatorService` ou em uma classe estática `CityResourceSpecializationMap`:
 
 | Cidade | Recurso especializado |
 |---|---|
@@ -174,7 +195,7 @@ public record MarketPriceQuote(string ItemId, AlbionCityEnum City, decimal? Pric
 Detalhes de implementação:
 - Timeout de 10s aplicado via `CancellationTokenSource(TimeSpan.FromSeconds(10))` combinado com o token externo, **não** via `HttpClient.Timeout` global (para não afetar outras chamadas do mesmo `HttpClient` compartilhado pela factory).
 - Falha de comunicação (timeout ou status HTTP não 2xx) é sinalizada via `CommunicationFailed = true` e propagada como resultado tipado — não como exceção não tratada — para permitir que o Controller monte a resposta HTTP 200 parcial do Requisito 6.4, conforme decisão de design descrita em "Error Handling".
-- A combinação de dois itens em uma única chamada usa o formato já documentado no steering: `GET /api/v2/stats/prices/{rawItemId},{refinedItemId}.json?locations={originCity},{destinationCity}`. O provider filtra, para cada item, apenas a cotação da cidade relevante (origem para o bruto, destino para o refinado) e seleciona o menor `sell_price_min` maior que zero.
+- A combinação de dois itens em uma única chamada usa o formato já documentado no albion-domain-context: `GET /api/v2/stats/prices/{rawItemId},{refinedItemId}.json?locations={originCity},{destinationCity}`. O provider filtra, para cada item, apenas a cotação da cidade relevante (origem para o bruto, destino para o refinado) e seleciona o menor `sell_price_min` maior que zero.
 
 ### 3. `RefiningSimulationRepository` (persistência EF Core)
 
@@ -401,7 +422,7 @@ public class RefiningHistoryQueryDTO
 
 ## Pesquisa de mercado: fórmula de Focus Cost (não oficial)
 
-A wiki oficial (steering, seção 2.6) confirma a **direção** da relação entre maestria e custo de Focus (mais especialização → menos Focus necessário, até um teto de 6.25% do custo base), mas não publica uma fórmula fechada de "Mastery_Level (0-100) → Focus Cost". Para preencher essa lacuna, pesquisei ferramentas de terceiros já existentes na comunidade — incluindo as listadas como "3rd party tools" no próprio site oficial da AODP (albion-online-data.com) — para entender como elas resolvem esse cálculo.
+A wiki oficial (albion-domain-context, seção 2.6) confirma a **direção** da relação entre maestria e custo de Focus (mais especialização → menos Focus necessário, até um teto de 6.25% do custo base), mas não publica uma fórmula fechada de "Mastery_Level (0-100) → Focus Cost". Para preencher essa lacuna, pesquisei ferramentas de terceiros já existentes na comunidade — incluindo as listadas como "3rd party tools" no próprio site oficial da AODP (albion-online-data.com) — para entender como elas resolvem esse cálculo.
 
 ### Fontes encontradas
 
@@ -434,7 +455,12 @@ A wiki oficial (steering, seção 2.6) confirma a **direção** da relação ent
 
 Com expoente `0.5` (raiz quadrada), no teto oficial de eficiência (40.000, conforme a wiki), `FocusCost = BaseCost × (40000/10000)^0.5 = BaseCost × 2` — ou seja, o custo **dobraria** no nível máximo de maestria, o que contradiz diretamente a wiki oficial (custo cai para 6.25% do base no máximo). Isso sugere uma inversão de fórmula (talvez seja um divisor no código-fonte real, não um multiplicador) ou uma leitura incorreta da wiki por parte do autor do repositório. Por ser uma fonte não oficial e sem verificação cruzada disponível, **não é adotada literalmente** — apenas sua estrutura geral (eficiência cresce com pontos de especialização, com um divisor de normalização) inspira a fórmula aproximada abaixo.
 
-### Fórmula aproximada adotada para este módulo (não oficial, decisão de design)
+### Fórmula aproximada adotada para este módulo (não oficial, decisão de design) — **substituída em 2026-10-23**
+
+> A fórmula linear abaixo foi substituída pela curva exponencial derivada do albion-domain-context 2.6
+> (`Math.Pow(0.5, MasteryLevel × 0.04)`), que respeita o mesmo teto de 6,25% em maestria máxima mas é
+> fiel ao comportamento "cada 10.000 pontos de eficiência reduz o custo à metade" no meio da faixa.
+> O texto original segue abaixo como registro da decisão anterior.
 
 Para respeitar a Property 6 (Focus_Cost nunca aumenta quando Mastery_Level aumenta) e o teto de 6.25% citado pela wiki oficial, adota-se a seguinte fórmula aproximada, mapeando `Mastery_Level` (0-100, conforme definido no requirements.md) linearmente para o intervalo de eficiência \[0, 40000\] da wiki:
 
@@ -453,18 +479,24 @@ Esta fórmula:
 
 **Esta fórmula deve ser tratada como uma aproximação de gameplay para fins de simulação, não como uma réplica exata do cálculo interno do jogo.** Deve ser documentada como tal via XML doc comment no método `CalculateFocusCost` durante a implementação (tasks), citando este documento como referência.
 
-### Limitações conhecidas (não corrigidas nesta fase)
+### Limitações conhecidas — **superadas em 2026-10-23**
 
-- O consumo de material refinado do tier anterior (T4+) identificado na pesquisa não está incorporado ao `CalculateCostAndProfit`; o cálculo atual assume apenas recurso bruto → recurso refinado em uma única etapa. Correção proposta para uma iteração futura do módulo, fora do escopo do MVP definido no requirements.md.
-- O `BaseFocusCostPerUnit` por tier/qualidade não tem fonte oficial confirmada; valores de terceiros (tabela do Edison-Cabrera) podem ser usados como estimativa inicial na implementação, mas devem ser tratados como configuráveis (não hardcoded sem possibilidade de ajuste), dado o baixo grau de confiança da fonte.
+- ~~O consumo de material refinado do tier anterior (T4+) não está incorporado ao `CalculateCostAndProfit`.~~
+  Entrou no MVP. A receita real foi extraída do `ao-bin-dumps/items.xml` e vale a partir de **T3**, não de T4:
+  bruto por craft 1/2/2/3/4/5/5 em T2–T8, mais 1 unidade do refinado T-1 de T3 em diante.
+- ~~O `BaseFocusCostPerUnit` por tier não tem fonte oficial confirmada.~~ Tem: o atributo `craftingfocus` do
+  próprio `items.xml` (18/31/54/94/164/287/503 em T2–T8, por craft, não por unidade de bruto). Segue
+  configurável via `RefiningOptions`, mas agora com defaults oficiais em vez de estimativa de terceiros.
+- Continua em aberto: arbitragem de recurso bruto entre cidades como baseline do modo `Purchased`, e
+  qualidade/encantamento, bônus diário, ilhas e hideouts.
 
 ## Design Decisions
 
-- **Por que separar `RefiningCalculatorService` de `MarketPriceProviderService`**: garante que ~90% da lógica de negócio (fórmulas do jogo) seja testável com PBT em milissegundos, sem flakiness de rede. Alinhado explicitamente com a seção 3 do steering `albion-domain-context.md`.
+- **Por que separar `RefiningCalculatorService` de `MarketPriceProviderService`**: garante que ~90% da lógica de negócio (fórmulas do jogo) seja testável com PBT em milissegundos, sem flakiness de rede. Alinhado explicitamente com a seção 3 do contexto de domínio `.claude/rules/albion-domain-context.md`.
 - **Por que não reaproveitar `SearchItemsService` diretamente**: `SearchItemsService` hoje é acoplado a uma única cidade fixa (`Caerleon`) e não implementa timeout nem combinação de múltiplos itens/cidades. `MarketPriceProviderService` é um novo serviço que segue o mesmo padrão (`IHttpClientFactory`, mesma URL base), mas generalizado. Reaproveitar via herança/composição do `SearchItemsService` existente não traz benefício e acoplaria o módulo de Refino aos parâmetros fixos do módulo de Search; os dois serviços permanecem independentes, ambos seguindo o mesmo padrão arquitetural.
 - **Erros de rede como resultado tipado, não exceção**: evita que o Controller precise de `try/catch` para um fluxo de negócio esperado (Requisito 6.4 é um "caminho feliz" de resposta 200, não uma condição excepcional).
 - **Falha de mercado não persiste histórico**: decisão explícita para atender ao Requisito 7.3 combinado com 6.4 — uma simulação sem dados de mercado ainda retorna 200 (não é uma "falha" da simulação em si, os campos calculáveis são retornados), mas por não ter produzido um resultado completo de custo/lucro, não é elegível para persistência, conforme Glossário (`Refining_Simulation` "elegível para persistência").
-- **Localização do Repository**: colocado em `AlbionWebApp/Data/` junto ao `AppDbContext`, mantendo simetria com a estrutura de pastas atual do projeto (que ainda não tem uma pasta `Repositories/`); pode ser revisitado se o projeto adotar padrão Repository mais amplamente no futuro.
+- **Localização do Repository**: ~~colocado em `AlbionWebApp/Data/` junto ao `AppDbContext`~~ — **revisado em 2026-10-23**: fica em `AlbionWebApp/Repository/`, junto do `ItemLabelRepository` que já existe, seguindo a convenção real do projeto.
 - **Precisão decimal**: todos os valores monetários e percentuais calculados usam `decimal` (nunca `double`/`float`), pelo padrão já estabelecido implicitamente pelo domínio financeiro do módulo, evitando erros de arredondamento acumulados nas fórmulas de RRR/lucro.
 
 ## Correctness Properties
@@ -525,17 +557,32 @@ Para qualquer par de julgamentos de disponibilidade (preço do bruto, preço do 
 
 Para qualquer quantidade não negativa e qualquer preço unitário não negativo, a receita bruta calculada (venda do bruto sem refinar ou venda do refinado) é sempre igual ao produto exato entre a quantidade e o preço unitário.
 
+> **Revisado em 2026-10-23**: vale integralmente para a venda do refinado. Para a venda do bruto, vale
+> apenas quando `RawAcquisitionMode == Gathered`; em `Purchased` a receita de venda do bruto é zero por
+> definição (Req 4.7 revisado).
+
 **Validates: Requirements 4.4, 4.7**
 
 ### Property 10: Custo de aquisição é proporcional à quantidade líquida necessária
 
 Para qualquer quantidade bruta, quantidade devolvida (sempre menor que a bruta, pela Property 4) e preço do recurso bruto na origem, o custo de aquisição calculado é igual ao produto entre (quantidade bruta − quantidade devolvida) e o preço, e é sempre não negativo.
 
-**Validates: Requirements 4.1**
+> **Revisado em 2026-10-23**: a quantidade base é a **consumida** (`RawUsed = CraftCount × RawPerCraft`),
+> não a quantidade informada — a sobra que não completa um craft não entra no custo. O custo é esse
+> produto quando `RawAcquisitionMode == Purchased` e exatamente zero quando `Gathered`. A mesma
+> propriedade vale, separadamente, para o material T-1 (Req 4.1.1).
+
+**Validates: Requirements 4.1, 4.1.1**
 
 ### Property 11: Station_Fee contribui integralmente ao custo total, no modo correspondente ao informado
 
 Para qualquer custo de aquisição e qualquer Station_Fee informado como valor fixo, o custo total de refino inclui exatamente esse valor fixo somado ao custo de aquisição; para qualquer Station_Fee informado como percentual, o custo total de refino inclui exatamente o percentual aplicado sobre o custo de aquisição somado a ele; quando nenhum Station_Fee é informado, o custo total é igual ao custo de aquisição.
+
+> **Revisado em 2026-10-23**: o custo de aquisição agora é a soma do custo do bruto com o do material
+> T-1, cada um conforme seu Acquisition_Mode. Consequência a decidir: em modo `Gathered` nos dois
+> materiais, o custo de aquisição é zero e o Station_Fee percentual some — no jogo a taxa da estação não
+> depende de o material ter sido comprado. Alternativa: aplicar o percentual sobre o valor de mercado
+> dos materiais consumidos, independentemente do modo.
 
 **Validates: Requirements 4.2, 4.3**
 

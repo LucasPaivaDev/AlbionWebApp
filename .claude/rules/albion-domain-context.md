@@ -1,6 +1,9 @@
 ﻿---
-inclusion: fileMatch
-fileMatchPattern: "*efin*"
+paths:
+  - "**/*efin*"
+  - "**/*Focus*"
+  - "**/*Market*"
+  - "**/*Price*"
 ---
 
 # Contexto de Dominio: Albion Online Data Project (AODP) e Mecanica de Refino
