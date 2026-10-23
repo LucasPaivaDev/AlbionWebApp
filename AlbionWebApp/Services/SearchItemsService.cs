@@ -39,7 +39,8 @@ namespace AlbionWebApp.Services
             response.EnsureSuccessStatusCode();
 
             var createdItems = new List<ItemPrice>();
-            var responseDtoList =  await AsyncFormatAODPResponse(response);
+            List<AodpItemPriceResponseDTO> responseDtoList =  await AsyncFormatAODPResponse(response);
+
             foreach (AodpItemPriceResponseDTO dto in responseDtoList)
             {
                 ItemLabel itemLabel = await _itemLabelRepository.CreateItemLabelByAodpDto(dto);
